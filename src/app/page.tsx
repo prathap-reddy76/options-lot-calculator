@@ -1,89 +1,223 @@
 'use client';
 
-import React, { useState } from 'react';
-import Link from 'next/link';
+import React, { useState, useMemo } from 'react';
 import { Header } from '@/components/dashboard/Header';
 import { MarketSelector } from '@/components/dashboard/MarketSelector';
 import { GrowwOptionChain } from '@/components/chain/GrowwOptionChain';
-import { ManualEntryCard } from '@/components/chain/ManualEntryCard';
-import { OptionSelectionBottomBar } from '@/components/chain/OptionSelectionBottomBar';
+import { OptionInputsCard } from '@/components/calculator/OptionInputsCard';
+import { CapitalManager } from '@/components/calculator/CapitalManager';
+import { SinglePageResultsSection } from '@/components/calculator/SinglePageResultsSection';
 import { TradingDisclaimer } from '@/components/dashboard/TradingDisclaimer';
 import { RoadmapModal } from '@/components/dashboard/RoadmapModal';
 import { useOptionWorkflow } from '@/context/OptionWorkflowContext';
-import { Layers, Edit3, ArrowRight, TrendingUp } from 'lucide-react';
+import { INSTRUMENTS_DEFINITIONS } from '@/lib/constants';
+import { calculateOptionsBudget } from '@/lib/calculations';
+import { LegInputs } from '@/types/calculator';
+import {
+  Layers,
+  Edit3,
+  Sparkles,
+  RotateCcw,
+  AlertCircle,
+  HelpCircle,
+  CheckCircle2,
+} from 'lucide-react';
 
-export default function OptionChainSelectionPage() {
+export default function SinglePageOptionsLotCalculator() {
   const {
     selectedInstrumentId,
+    selectedExpiry,
+    selectedCeContract,
+    selectedPeContract,
+    totalCapital,
+    ceAllocationPercent,
+    peAllocationPercent,
+    chargesEnabled,
+    estimatedChargePerLot,
     workflowMode,
-    canContinue,
     selectMarket,
+    setTotalCapital,
+    setCeAllocation,
     setWorkflowMode,
+    resetAllocation,
+    startAgain,
+    loadExampleContracts,
+    updateCeManual,
+    updatePeManual,
   } = useOptionWorkflow();
 
   const [isRoadmapOpen, setIsRoadmapOpen] = useState<boolean>(false);
+  const [isRefreshingQuotes, setIsRefreshingQuotes] = useState<boolean>(false);
+
+  const instrument = INSTRUMENTS_DEFINITIONS[selectedInstrumentId];
+
+  // Refresh live market quotes from API endpoint
+  const handleRefreshQuotes = async () => {
+    setIsRefreshingQuotes(true);
+    try {
+      if (selectedCeContract) {
+        const resCe = await fetch('/api/market-data/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            exchange: selectedCeContract.exchange,
+            underlyingSymbol: selectedCeContract.underlyingSymbol,
+            expiryDate: selectedCeContract.expiryDate,
+            strikePrice: selectedCeContract.strikePrice,
+            optionType: 'CE',
+          }),
+        });
+        const jsonCe = await resCe.json();
+        if (jsonCe.success && jsonCe.data) {
+          updateCeManual({
+            premium: jsonCe.data.lastTradedPrice,
+            bidPrice: jsonCe.data.bidPrice,
+            askPrice: jsonCe.data.askPrice,
+            openInterest: jsonCe.data.openInterest,
+            timestamp: jsonCe.data.timestamp,
+            quoteState: 'LIVE',
+            source: 'API',
+          });
+        }
+      }
+
+      if (selectedPeContract) {
+        const resPe = await fetch('/api/market-data/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            exchange: selectedPeContract.exchange,
+            underlyingSymbol: selectedPeContract.underlyingSymbol,
+            expiryDate: selectedPeContract.expiryDate,
+            strikePrice: selectedPeContract.strikePrice,
+            optionType: 'PE',
+          }),
+        });
+        const jsonPe = await resPe.json();
+        if (jsonPe.success && jsonPe.data) {
+          updatePeManual({
+            premium: jsonPe.data.lastTradedPrice,
+            bidPrice: jsonPe.data.bidPrice,
+            askPrice: jsonPe.data.askPrice,
+            openInterest: jsonPe.data.openInterest,
+            timestamp: jsonPe.data.timestamp,
+            quoteState: 'LIVE',
+            source: 'API',
+          });
+        }
+      }
+    } catch {
+      // Graceful fallback on network glitch
+    } finally {
+      setIsRefreshingQuotes(false);
+    }
+  };
+
+  // Pure Calculation Engine execution — strictly reactive, zero Calculate button!
+  const calculationResult = useMemo(() => {
+    const ceLegInputs: LegInputs = {
+      strikePrice: selectedCeContract?.strikePrice || null,
+      premium: selectedCeContract?.premium ?? null,
+      lotSize: selectedCeContract?.lotSize || instrument.defaultLotSize || null,
+      chargesEnabled,
+      estimatedChargePerLot: chargesEnabled ? estimatedChargePerLot : 0,
+      expiryDate: selectedExpiry || undefined,
+      underlyingSymbol: instrument.symbol,
+      contractIdentifier: selectedCeContract?.contractIdentifier,
+      source: selectedCeContract?.source || 'MANUAL',
+      quoteState: selectedCeContract?.quoteState || 'NOT_CONNECTED',
+    };
+
+    const peLegInputs: LegInputs = {
+      strikePrice: selectedPeContract?.strikePrice || null,
+      premium: selectedPeContract?.premium ?? null,
+      lotSize: selectedPeContract?.lotSize || instrument.defaultLotSize || null,
+      chargesEnabled,
+      estimatedChargePerLot: chargesEnabled ? estimatedChargePerLot : 0,
+      expiryDate: selectedExpiry || undefined,
+      underlyingSymbol: instrument.symbol,
+      contractIdentifier: selectedPeContract?.contractIdentifier,
+      source: selectedPeContract?.source || 'MANUAL',
+      quoteState: selectedPeContract?.quoteState || 'NOT_CONNECTED',
+    };
+
+    return calculateOptionsBudget({
+      totalCapital,
+      ceAllocationPercent,
+      marketCategory: 'NIFTY_50',
+      instrumentId: selectedInstrumentId,
+      selectedExpiry,
+      ce: ceLegInputs,
+      pe: peLegInputs,
+    });
+  }, [
+    selectedCeContract,
+    selectedPeContract,
+    selectedInstrumentId,
+    selectedExpiry,
+    totalCapital,
+    ceAllocationPercent,
+    chargesEnabled,
+    estimatedChargePerLot,
+    instrument,
+  ]);
 
   return (
     <div className="min-h-screen bg-[#090c10] text-[#f0f6fc] flex flex-col">
       {/* Header */}
       <Header onOpenRoadmap={() => setIsRoadmapOpen(true)} />
 
-      {/* Main Page 1 Container */}
+      {/* Main Single-Page Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 space-y-6">
-        {/* Step Progress Banner */}
-        <div className="bg-[#10141f] border border-[#20273a] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-          {/* Step 1 Indicator */}
+        {/* Single-Page Real-Time Guidance Banner */}
+        <div className="bg-[#10141f] border border-[#20273a] rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <span className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold text-sm flex items-center justify-center shadow-md shadow-indigo-600/30">
-              1
-            </span>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-emerald-500 p-[1px] shrink-0 shadow-lg shadow-indigo-600/20">
+              <div className="w-full h-full bg-[#0b0f19] rounded-[11px] flex items-center justify-center font-bold text-emerald-400 font-mono text-sm">
+                ₹
+              </div>
+            </div>
             <div>
-              <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
-                <span>Step 1: Market & Option Chain</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
-                  Current
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                  Single-Page Options Lot Calculator
+                </h2>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  <span>Automatic Real-Time Calculation</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-300 font-medium">
-                Choose an Index or MCX Commodity, then select independent Call (CE) & Put (PE) contracts.
+              <p className="text-xs text-slate-400 mt-0.5">
+                Select your market instrument, adjust CE/PE premiums, set your investment capital, and view whole affordable lots instantly without clicking any submit button.
               </p>
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 text-slate-600 font-mono text-xs">
-            <span>───</span>
-            <ArrowRight className="w-4 h-4 text-slate-500" />
-            <span>───</span>
-          </div>
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={loadExampleContracts}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#151b28] hover:bg-[#1f2638] text-slate-200 hover:text-white border border-[#222a3d] transition-all"
+              title="Reset to verified NIFTY 24500 example"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Load Example</span>
+            </button>
 
-          {/* Step 2 Link */}
-          <Link
-            href={canContinue ? '/calculator' : '#'}
-            className={`flex items-center gap-3 p-2 rounded-lg transition-all ${
-              canContinue
-                ? 'hover:bg-slate-800/80 cursor-pointer group'
-                : 'opacity-40 cursor-not-allowed pointer-events-none'
-            }`}
-          >
-            <span className={`w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center border ${
-              canContinue ? 'bg-slate-800 text-indigo-300 border-indigo-500/50' : 'bg-[#151a26] text-slate-500 border-slate-700'
-            }`}>
-              2
-            </span>
-            <div className="text-left">
-              <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <span>Step 2: Capital Allocation</span>
-                <TrendingUp className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400" />
-              </div>
-              <p className="text-[11px] text-slate-400">
-                {canContinue ? 'Click to configure 50/50 capital split →' : 'Select CE & PE contracts to unlock'}
-              </p>
-            </div>
-          </Link>
+            <button
+              type="button"
+              onClick={startAgain}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all"
+              title="Reset all inputs"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Reset</span>
+            </button>
+          </div>
         </div>
 
-        {/* Feature 1: Market Selection Buttons */}
-        <section id="section-market">
+        {/* SECTION 1: Instrument Selector */}
+        <section id="section-market" className="space-y-2">
           <MarketSelector
             selectedInstrumentId={selectedInstrumentId}
             onSelectInstrument={selectMarket}
@@ -91,8 +225,24 @@ export default function OptionChainSelectionPage() {
           />
         </section>
 
-        {/* Mode Switcher: Option Chain Selection vs Manual Entry Fallback */}
-        <div className="flex items-center justify-between p-2 rounded-xl bg-[#10141f] border border-[#20273a]">
+        {/* SECTION 2: CE and PE Option Selection and Premium Fields */}
+        <section id="section-option-inputs" className="space-y-4">
+          <OptionInputsCard
+            instrument={instrument}
+            selectedCeContract={selectedCeContract}
+            selectedPeContract={selectedPeContract}
+            calculationResult={calculationResult}
+            onUpdateCe={updateCeManual}
+            onUpdatePe={updatePeManual}
+            ceAllocationPercent={ceAllocationPercent}
+            peAllocationPercent={peAllocationPercent}
+            onRefreshQuotes={handleRefreshQuotes}
+            isRefreshingQuotes={isRefreshingQuotes}
+          />
+        </section>
+
+        {/* Mode Switcher: Quick Manual Input vs Groww Option Chain */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-xl bg-[#10141f] border border-[#20273a] gap-2">
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -104,7 +254,7 @@ export default function OptionChainSelectionPage() {
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              <span>Groww-Style Option Chain (Primary)</span>
+              <span>Groww-Style Option Chain Table</span>
             </button>
 
             <button
@@ -117,52 +267,76 @@ export default function OptionChainSelectionPage() {
               }`}
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span>Manual Entry Mode</span>
+              <span>Quick Direct Mode</span>
             </button>
           </div>
 
-          <div className="hidden sm:block text-[11px] font-mono text-slate-400 pr-2">
-            Mode:{' '}
-            <span className="text-slate-200">
-              {workflowMode === 'CHAIN' ? 'Groww Option Chain' : 'Custom Strikes'}
+          <div className="text-[11px] font-mono text-slate-400 px-2 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+            <span>
+              {workflowMode === 'CHAIN'
+                ? 'Click any strike below to select contract & populate live price'
+                : 'Direct manual entry active'}
             </span>
           </div>
         </div>
 
-        {/* Main Option Chain or Manual Entry View */}
-        {workflowMode === 'CHAIN' ? (
-          <section id="section-chain">
+        {/* Groww Option Chain Viewer when CHAIN mode is active */}
+        {workflowMode === 'CHAIN' && (
+          <section id="section-chain" className="transition-all">
             <GrowwOptionChain onSwitchToManual={() => setWorkflowMode('MANUAL')} />
-          </section>
-        ) : (
-          <section id="section-manual" className="pb-28">
-            <ManualEntryCard />
           </section>
         )}
 
-        {/* Trading Disclaimer */}
-        <section id="section-disclaimer" className="pt-4 pb-16">
+        {/* SECTION 3: Total Investment & Capital Allocation Controls */}
+        <section id="section-capital">
+          <CapitalManager
+            totalCapital={totalCapital}
+            onTotalCapitalChange={setTotalCapital}
+            ceAllocationPercent={ceAllocationPercent}
+            onCeAllocationChange={setCeAllocation}
+            ceBudget={calculationResult.ceBudget}
+            peBudget={calculationResult.peBudget}
+            errorMessage={calculationResult.validationErrors.totalCapital}
+          />
+        </section>
+
+        {/* SECTION 4: Automatic Results for CE Lots, PE Lots, Costs & Balance */}
+        <section id="section-results">
+          <SinglePageResultsSection
+            instrument={instrument}
+            calculationResult={calculationResult}
+            selectedCeContract={selectedCeContract}
+            selectedPeContract={selectedPeContract}
+            ceAllocationPercent={ceAllocationPercent}
+            peAllocationPercent={peAllocationPercent}
+            chargesEnabled={chargesEnabled}
+            estimatedChargePerLot={estimatedChargePerLot}
+            onResetAllocation={resetAllocation}
+            onLoadExample={loadExampleContracts}
+          />
+        </section>
+
+        {/* SECTION 5: Trading Disclaimer */}
+        <section id="section-disclaimer" className="pt-2">
           <TradingDisclaimer />
         </section>
       </main>
 
-      {/* Floating Sticky Bottom Bar for Selection Confirmation & Continue Navigation */}
-      <OptionSelectionBottomBar />
-
-      {/* Phase Architecture Roadmap Modal */}
+      {/* Phase Roadmap Modal */}
       <RoadmapModal
         isOpen={isRoadmapOpen}
         onClose={() => setIsRoadmapOpen(false)}
       />
 
       {/* Footer */}
-      <footer className="border-t border-[#1b2234] bg-[#080b0f] py-6 text-center text-xs text-slate-500 mb-16 sm:mb-14">
+      <footer className="border-t border-[#1b2234] bg-[#080b0f] py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>
-            © {new Date().getFullYear()} Options Lot Calculator • Page 1: Market & Option Chain Selection
+            © {new Date().getFullYear()} Options Lot Calculator • Single-Page Automatic Calculator
           </p>
           <p className="text-[11px] text-slate-400">
-            Multi-Market NSE / BSE / MCX • Pure Mathematical Engine
+            Multi-Market NSE / BSE / MCX • Pure Mathematical Engine • Real-Time Reactivity
           </p>
         </div>
       </footer>

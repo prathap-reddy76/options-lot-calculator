@@ -163,7 +163,7 @@ describe('Angel One Instrument Master Normalization & Lookup', () => {
       },
     ];
 
-    angelOneInstrumentMaster.loadMockData(mockScripData);
+    angelOneInstrumentMaster.loadMockData(mockScripData, new Date('2026-10-25'));
 
     // Verify available expiries for NIFTY 50
     const expiries = await angelOneInstrumentMaster.getAvailableExpiries('NIFTY_50');

@@ -147,10 +147,10 @@ export class AngelOneInstrumentMasterService {
   /**
    * Allows injecting pre-parsed mock scrips for lightning-fast deterministic unit testing.
    */
-  public loadMockData(records: RawScripRecord[]): void {
+  public loadMockData(records: RawScripRecord[], referenceDate?: Date): void {
     this.byUnderlying.clear();
     this.byToken.clear();
-    this.processRawRecords(records);
+    this.processRawRecords(records, referenceDate);
     this.cacheTimestamp = Date.now();
   }
 
@@ -280,8 +280,8 @@ export class AngelOneInstrumentMasterService {
   /**
    * Parses and indexes raw scrip records.
    */
-  public processRawRecords(records: RawScripRecord[]): void {
-    const now = new Date();
+  public processRawRecords(records: RawScripRecord[], referenceDate?: Date): void {
+    const now = referenceDate || new Date();
     // Exclude contracts expired before today
     const todayStr = now.toISOString().split('T')[0];
 

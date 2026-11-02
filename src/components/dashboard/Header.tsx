@@ -57,53 +57,20 @@ export const Header: React.FC<HeaderProps> = ({
                 OPTIONS LOT CALCULATOR
               </h1>
               <Badge variant="ce" size="sm" className="hidden sm:inline-flex">
-                Groww Workflow
+                Single-Page Automatic
               </Badge>
             </div>
             <p className="text-[11px] text-slate-400 hidden xs:block">
-              Option Chain Selector & Whole-Lot Capital Allocation
+              Unified Real-Time Whole-Lot & Capital Allocation Engine
             </p>
           </div>
         </Link>
 
-        {/* Center: Two-Step Navigation Tabs */}
-        <div className="hidden lg:flex items-center bg-[#10141f] border border-[#20273a] p-1 rounded-xl gap-1">
-          <Link
-            href="/"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              isStep1
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">
-              1
-            </span>
-            <Layers className="w-3.5 h-3.5" />
-            <span>Option Chain</span>
-          </Link>
-
-          <span className="text-slate-600 px-1">→</span>
-
-          <Link
-            href="/calculator"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              isStep2
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : canContinue
-                ? 'text-slate-300 hover:text-white hover:bg-slate-800'
-                : 'text-slate-500 hover:text-slate-400'
-            }`}
-          >
-            <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">
-              2
-            </span>
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Lot Calculator</span>
-            {canContinue && !isStep2 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            )}
-          </Link>
+        {/* Center: Live Calculation Indicator */}
+        <div className="hidden lg:flex items-center bg-[#10141f] border border-[#20273a] px-3 py-1.5 rounded-xl gap-2 text-xs">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-slate-300 font-medium">Automatic Calculation Active</span>
+          <span className="text-slate-500 font-mono text-[10px]">| Real-Time Reactivity</span>
         </div>
 
         {/* Quick Nav & Action Buttons */}

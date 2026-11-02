@@ -38,17 +38,49 @@ interface OptionWorkflowContextType {
   loadExampleContracts: () => void;
   updateCeManual: (updates: Partial<SelectedContract>) => void;
   updatePeManual: (updates: Partial<SelectedContract>) => void;
+  setCePremium: (premium: number | null) => void;
+  setPePremium: (premium: number | null) => void;
+  setCeLotSize: (lotSize: number | null) => void;
+  setPeLotSize: (lotSize: number | null) => void;
+  setCeStrike: (strike: number | null) => void;
+  setPeStrike: (strike: number | null) => void;
 }
 
 const STORAGE_KEY = 'options_lot_calc_workflow_v1';
+
+const DEFAULT_CE: SelectedContract = {
+  exchange: 'NSE',
+  underlyingSymbol: 'NIFTY',
+  expiryDate: '2026-10-29',
+  strikePrice: 24500,
+  optionType: 'CE',
+  premium: 40,
+  lotSize: 65,
+  contractIdentifier: 'NSE:NIFTY26OCT24500CE',
+  source: 'MANUAL',
+  quoteState: 'NOT_CONNECTED',
+};
+
+const DEFAULT_PE: SelectedContract = {
+  exchange: 'NSE',
+  underlyingSymbol: 'NIFTY',
+  expiryDate: '2026-10-29',
+  strikePrice: 24500,
+  optionType: 'PE',
+  premium: 60,
+  lotSize: 65,
+  contractIdentifier: 'NSE:NIFTY26OCT24500PE',
+  source: 'MANUAL',
+  quoteState: 'NOT_CONNECTED',
+};
 
 const OptionWorkflowContext = createContext<OptionWorkflowContextType | null>(null);
 
 export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<InstrumentId>('NIFTY_50');
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>('2026-10-29');
-  const [selectedCeContract, setSelectedCeContract] = useState<SelectedContract | null>(null);
-  const [selectedPeContract, setSelectedPeContract] = useState<SelectedContract | null>(null);
+  const [selectedCeContract, setSelectedCeContract] = useState<SelectedContract | null>(DEFAULT_CE);
+  const [selectedPeContract, setSelectedPeContract] = useState<SelectedContract | null>(DEFAULT_PE);
   const [totalCapital, setTotalCapitalState] = useState<number | null>(200000);
   const [ceAllocationPercent, setCeAllocationState] = useState<number>(50);
   const [chargesEnabled, setChargesEnabled] = useState<boolean>(false);
@@ -118,23 +150,64 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
   }, [ceAllocationPercent]);
 
   /**
-   * Market Selection: Changing selected market clears incompatible contracts & expiries.
+   * Market Selection: Updates instrument and adapts contract specifications (lot size, exchange, underlying).
    */
   const selectMarket = useCallback((id: InstrumentId) => {
     const inst = INSTRUMENTS_DEFINITIONS[id];
     setSelectedInstrumentId(id);
-    setSelectedExpiry('2026-10-29'); // Initialize to standard reference expiry
-    setSelectedCeContract(null); // Clear incompatible CE contract
-    setSelectedPeContract(null); // Clear incompatible PE contract
+    setSelectedExpiry('2026-10-29'); // Standard active reference expiry
+    const newLotSize = inst.defaultLotSize;
+
+    setSelectedCeContract((prev) => {
+      const base: SelectedContract = prev
+        ? { ...prev }
+        : {
+            exchange: inst.exchange,
+            underlyingSymbol: inst.symbol,
+            strikePrice: 0,
+            premium: null,
+            optionType: 'CE',
+            expiryDate: '2026-10-29',
+          };
+      return {
+        ...base,
+        exchange: inst.exchange,
+        underlyingSymbol: inst.symbol,
+        lotSize: newLotSize !== null ? newLotSize : prev?.lotSize ?? null,
+        contractIdentifier: undefined,
+        token: undefined,
+      };
+    });
+
+    setSelectedPeContract((prev) => {
+      const base: SelectedContract = prev
+        ? { ...prev }
+        : {
+            exchange: inst.exchange,
+            underlyingSymbol: inst.symbol,
+            strikePrice: 0,
+            premium: null,
+            optionType: 'PE',
+            expiryDate: '2026-10-29',
+          };
+      return {
+        ...base,
+        exchange: inst.exchange,
+        underlyingSymbol: inst.symbol,
+        lotSize: newLotSize !== null ? newLotSize : prev?.lotSize ?? null,
+        contractIdentifier: undefined,
+        token: undefined,
+      };
+    });
   }, []);
 
   /**
-   * Expiry Selection: Changing expiry clears strikes that do not belong to that expiry.
+   * Expiry Selection: Changing expiry updates contract expiry date.
    */
   const selectExpiry = useCallback((expiry: string) => {
     setSelectedExpiry(expiry);
-    setSelectedCeContract((prev) => (prev ? { ...prev, expiryDate: expiry, strikePrice: 0, premium: null } : null));
-    setSelectedPeContract((prev) => (prev ? { ...prev, expiryDate: expiry, strikePrice: 0, premium: null } : null));
+    setSelectedCeContract((prev) => (prev ? { ...prev, expiryDate: expiry } : null));
+    setSelectedPeContract((prev) => (prev ? { ...prev, expiryDate: expiry } : null));
   }, []);
 
   /**
@@ -189,11 +262,10 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
   }, []);
 
   const startAgain = useCallback(() => {
-    const inst = INSTRUMENTS_DEFINITIONS['NIFTY_50'];
     setSelectedInstrumentId('NIFTY_50');
-    setSelectedExpiry(null);
-    setSelectedCeContract(null);
-    setSelectedPeContract(null);
+    setSelectedExpiry('2026-10-29');
+    setSelectedCeContract(DEFAULT_CE);
+    setSelectedPeContract(DEFAULT_PE);
     setTotalCapitalState(200000);
     setCeAllocationState(50);
     setChargesEnabled(false);
@@ -209,38 +281,10 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
    * Load the verified prompt example values for testing and immediate calculation
    */
   const loadExampleContracts = useCallback(() => {
-    const inst = INSTRUMENTS_DEFINITIONS['NIFTY_50'];
-    const expiry = '2026-10-29';
-
     setSelectedInstrumentId('NIFTY_50');
-    setSelectedExpiry(expiry);
-
-    setSelectedCeContract({
-      exchange: 'NSE',
-      underlyingSymbol: 'NIFTY',
-      expiryDate: expiry,
-      strikePrice: 24500,
-      optionType: 'CE',
-      premium: 40,
-      lotSize: 65,
-      contractIdentifier: 'NSE:NIFTY26OCT24500CE',
-      source: 'MANUAL',
-      quoteState: 'NOT_CONNECTED',
-    });
-
-    setSelectedPeContract({
-      exchange: 'NSE',
-      underlyingSymbol: 'NIFTY',
-      expiryDate: expiry,
-      strikePrice: 24500,
-      optionType: 'PE',
-      premium: 60,
-      lotSize: 65,
-      contractIdentifier: 'NSE:NIFTY26OCT24500PE',
-      source: 'MANUAL',
-      quoteState: 'NOT_CONNECTED',
-    });
-
+    setSelectedExpiry('2026-10-29');
+    setSelectedCeContract(DEFAULT_CE);
+    setSelectedPeContract(DEFAULT_PE);
     setTotalCapitalState(200000);
     setCeAllocationState(50);
     setChargesEnabled(false);
@@ -259,7 +303,7 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
         premium: null,
         source: 'MANUAL',
       };
-      return { ...base, ...updates, source: 'MANUAL' };
+      return { ...base, ...updates, source: updates.source || 'MANUAL' };
     });
   }, [selectedInstrumentId, selectedExpiry]);
 
@@ -276,31 +320,57 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
         premium: null,
         source: 'MANUAL',
       };
-      return { ...base, ...updates, source: 'MANUAL' };
+      return { ...base, ...updates, source: updates.source || 'MANUAL' };
     });
   }, [selectedInstrumentId, selectedExpiry]);
+
+  const setCePremium = useCallback((premium: number | null) => {
+    updateCeManual({ premium });
+  }, [updateCeManual]);
+
+  const setPePremium = useCallback((premium: number | null) => {
+    updatePeManual({ premium });
+  }, [updatePeManual]);
+
+  const setCeLotSize = useCallback((lotSize: number | null) => {
+    updateCeManual({ lotSize });
+  }, [updateCeManual]);
+
+  const setPeLotSize = useCallback((lotSize: number | null) => {
+    updatePeManual({ lotSize });
+  }, [updatePeManual]);
+
+  const setCeStrike = useCallback((strikePrice: number | null) => {
+    updateCeManual({ strikePrice: strikePrice || 0 });
+  }, [updateCeManual]);
+
+  const setPeStrike = useCallback((strikePrice: number | null) => {
+    updatePeManual({ strikePrice: strikePrice || 0 });
+  }, [updatePeManual]);
 
   // Validation
   const validationErrors = useMemo(() => {
     const errors: { ce?: string; pe?: string; capital?: string } = {};
 
-    if (!selectedCeContract || !selectedCeContract.strikePrice || selectedCeContract.strikePrice <= 0) {
-      errors.ce = 'Please select a CE contract.';
-    } else if (selectedCeContract.premium === null || selectedCeContract.premium === undefined || selectedCeContract.premium <= 0) {
+    if (!selectedCeContract || selectedCeContract.premium === null || selectedCeContract.premium === undefined) {
+      errors.ce = 'Enter CE premium.';
+    } else if (selectedCeContract.premium <= 0) {
       errors.ce = 'CE premium must be greater than ₹0.';
     } else if (!selectedCeContract.lotSize || selectedCeContract.lotSize <= 0) {
       errors.ce = 'CE lot size must be specified.';
     }
 
-    if (!selectedPeContract || !selectedPeContract.strikePrice || selectedPeContract.strikePrice <= 0) {
-      errors.pe = 'Please select a PE contract.';
-    } else if (selectedPeContract.premium === null || selectedPeContract.premium === undefined || selectedPeContract.premium <= 0) {
+    if (!selectedPeContract || selectedPeContract.premium === null || selectedPeContract.premium === undefined) {
+      errors.pe = 'Enter PE premium.';
+    } else if (selectedPeContract.premium <= 0) {
       errors.pe = 'PE premium must be greater than ₹0.';
     } else if (!selectedPeContract.lotSize || selectedPeContract.lotSize <= 0) {
       errors.pe = 'PE lot size must be specified.';
     }
 
-    if (totalCapital === null || totalCapital === undefined || totalCapital <= 0) {
+    if (totalCapital === null || totalCapital === undefined) {
+      errors.capital = 'Enter total investment capital.';
+    } else if (totalCapital <= 0) {
       errors.capital = 'Total capital must be greater than ₹0.';
     }
 
@@ -310,7 +380,6 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
   const canContinue = useMemo(() => {
     const isCeValid = Boolean(
       selectedCeContract &&
-      selectedCeContract.strikePrice > 0 &&
       selectedCeContract.premium != null &&
       selectedCeContract.premium > 0 &&
       selectedCeContract.lotSize != null &&
@@ -319,7 +388,6 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
 
     const isPeValid = Boolean(
       selectedPeContract &&
-      selectedPeContract.strikePrice > 0 &&
       selectedPeContract.premium != null &&
       selectedPeContract.premium > 0 &&
       selectedPeContract.lotSize != null &&
@@ -356,6 +424,12 @@ export const OptionWorkflowProvider: React.FC<{ children: React.ReactNode }> = (
     loadExampleContracts,
     updateCeManual,
     updatePeManual,
+    setCePremium,
+    setPePremium,
+    setCeLotSize,
+    setPeLotSize,
+    setCeStrike,
+    setPeStrike,
   };
 
   return (
